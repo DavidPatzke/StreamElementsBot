@@ -1,7 +1,7 @@
 {
-  "name": "Stream Elements Bot",
+  "name": "streamelementsbot",
   "productName": "StreamElementsBot",
-  "version": "0.1",
+  "version": "0.0.1",
   "description": "StreamElementsBot",
   "main": "./main.prod.js",
   "author": {

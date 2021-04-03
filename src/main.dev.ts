@@ -8,14 +8,15 @@
  * When running `yarn build` or `yarn build-main`, this file is compiled to
  * `./src/main.prod.js` using webpack. This gives us some performance wins.
  */
+import fs from 'fs';
 import 'core-js/stable';
 import 'regenerator-runtime/runtime';
 import path from 'path';
 import { app, BrowserWindow, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
-import MenuBuilder from './menu';
 import moment from 'moment';
+import MenuBuilder from './menu';
 
 const fetch = require('node-fetch');
 const async = require('async');
@@ -205,20 +206,39 @@ const getLoyalityData = (next: () => void) => {
     botConfig.seChannelId
   );
   logInfo('Try to fetch loyality data');
+  if (fs.existsSync('./loyalityData.json')) {
+    let data = null;
+    try {
+      data = JSON.parse(fs.readFileSync('./loyalityData.json'));
+      console.log(data);
+    } catch (err) {
+      data = null;
+    }
+    botConfig.loyalityData = data;
+  }
   return fetch(loyalityUrl)
     .then((response: Response) => response.json())
     .catch(() => {})
-    .then((jsonResponse: LoyalityData) => {
+    .then(async (jsonResponse: LoyalityData) => {
       logInfo('Succesfully fetched new loyality data');
+      try {
+        fs.writeFileSync('./loyalityData.json', JSON.stringify(jsonResponse));
+      } catch (err) {
+        console.error(err);
+      }
+
       if (botConfig.loyalityData) {
-        const userToNotify = botConfig.loyalityData.users.filter((element) => {
+        const userToNotify = jsonResponse.users.filter((element) => {
           const oldPoints =
-            jsonResponse.users.find(
+            botConfig.loyalityData?.users.find(
               (arrElement) => arrElement.username === element.username
             )?.points || Number.MIN_SAFE_INTEGER;
 
-          return element.points < oldPoints;
+          return (
+            Math.floor(element.points / 1000) > Math.floor(oldPoints / 1000)
+          );
         });
+
         userToNotify.forEach((user) => {
           const exists = botConfig.userToNotify.find(
             (element) => element.username === user.username
@@ -230,7 +250,9 @@ const getLoyalityData = (next: () => void) => {
 
         botConfig.loyalityData = jsonResponse;
       } else {
-        botConfig.userToNotify = jsonResponse.users;
+        botConfig.userToNotify = jsonResponse.users.filter((el) => {
+          return el.points > 1000;
+        });
       }
 
       setTimeout(next, 600000);
@@ -254,13 +276,15 @@ const onMessageHandler = (target, userstate, msg, self) => {
       break;
     case 'chat': {
       const { username } = userstate;
-      const { points } = botConfig.userToNotify.find(
+      const points = botConfig.userToNotify.find(
         (arrElement) => arrElement.username === username
-      );
+      )?.points;
       if (points) {
+        const lvl = Math.floor(points / 1000);
+        console.log(points);
         botConfig.client.say(
           botConfig.channel,
-          `Hello @${username}, du hast neuer LoyalityPoints gesammelt. Neuer Punktestand ${points}`
+          `Yay: @${username} hat gerade !level ${lvl} erreicht, Glückwunsch :partying_face: `
         );
       }
 
@@ -301,7 +325,7 @@ ipcMain.on('asynchronous-message', async (event, arg) => {
 
             client.action(
               botConfig.channel,
-              `Hello I'm ${arg.username} and I will now inform you about your StreamElements Point gain`
+              `${arg.username} erfolgreich verbunden! `
             );
             client.on('message', onMessageHandler);
             botConfig.client = client;
@@ -326,7 +350,7 @@ ipcMain.on('asynchronous-message', async (event, arg) => {
           })
           .then((responseJson: JSON) => {
             botConfig.seChannelId = responseJson._id;
-            console.log(botConfig);
+
             logInfo(
               `Got channel Id ${responseJson._id} for channel ${botConfig.channel} `
             );

@@ -26,7 +26,7 @@ const ControlScreen = withRouter(({ history }) => {
     id++;
   }
   useEffect(() => {
-    ipcRenderer.on('pong', (event, message) => {
+    const listener = (event, message) => {
       if (
         message.status &&
         message.name === 'log' &&
@@ -35,7 +35,12 @@ const ControlScreen = withRouter(({ history }) => {
       ) {
         addListRow(message.type, message.text, message.time);
       }
-    });
+    };
+
+    ipcRenderer.on('pong', listener);
+    return () => {
+      ipcRenderer.removeListener('pong', listener);
+    };
   });
 
   const startBot = () => {
